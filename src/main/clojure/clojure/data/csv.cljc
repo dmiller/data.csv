@@ -10,9 +10,11 @@
       :doc "Reading and writing comma separated values."}
   clojure.data.csv
   (:require (clojure [string :as str]))
-  (:import (java.io PushbackReader Reader Writer StringReader EOFException)))
+  (:import #?(:clj (java.io PushbackReader Reader Writer StringReader EOFException)
+              :cljr (System.IO TextReader TextWriter StringReader IOException))
+		   #?(:cljr (clojure.lang PushbackTextReader))))
 
-;(set! *warn-on-reflection* true)
+(set! *warn-on-reflection* true)
 
 ;; Reading
 
@@ -20,40 +22,40 @@
 (def ^{:private true} cr  (int \return))
 (def ^{:private true} eof -1)
 
-(defn- read-quoted-cell [^PushbackReader reader ^StringBuilder sb sep quote]
-  (loop [ch (.read reader)]
+(defn- read-quoted-cell [^#?(:clj PushbackReader :cljr PushbackTextReader) reader ^StringBuilder sb sep quote]
+  (loop [ch (#?(:clj .read :cljr .Read) reader)]
     (condp == ch
-      quote (let [next-ch (.read reader)]
+      quote (let [next-ch (#?(:clj .read :cljr .Read) reader)]
               (condp == next-ch
-                quote (do (.append sb (char quote))
-                          (recur (.read reader)))
+                quote (do (#?(:clj .append :cljr .Append) sb (char quote))
+                          (recur (#?(:clj .read :cljr .Read) reader)))
                 sep :sep
                 lf  :eol
-                cr  (let [next-next-ch (.read reader)]
+                cr  (let [next-next-ch (#?(:clj .read :cljr .Read) reader)]
                       (when (not= next-next-ch lf)
-                        (.unread reader next-next-ch))
+                        (#?(:clj .unread :cljr .Unread) reader next-next-ch))
                       :eol)
                 eof :eof
                 (throw (Exception. ^String (format "CSV error (unexpected character: %c)" next-ch)))))
-      eof (throw (EOFException. "CSV error (unexpected end of file)"))
-      (do (.append sb (char ch))
-          (recur (.read reader))))))
+      eof (throw (#?(:clj EOFException. :cljr IOException.) "CSV error (unexpected end of file)"))
+      (do (#?(:clj .append :cljr .Append) sb (char ch))
+          (recur (#?(:clj .read :cljr .Read) reader))))))
 
-(defn- read-cell [^PushbackReader reader ^StringBuilder sb sep quote]
-  (let [first-ch (.read reader)]
+(defn- read-cell [^#?(:clj PushbackReader :cljr PushbackTextReader) reader ^StringBuilder sb sep quote]
+  (let [first-ch (#?(:clj .read :cljr .Read) reader)]
     (if (== first-ch quote)
       (read-quoted-cell reader sb sep quote)
       (loop [ch first-ch]
         (condp == ch
           sep :sep
           lf  :eol
-          cr (let [next-ch (.read reader)]
+          cr (let [next-ch (#?(:clj .read :cljr .Read) reader)]
                (when (not= next-ch lf)
-                 (.unread reader next-ch))
+                 (#?(:clj .unread :cljr .Unread) reader next-ch))
                :eol)
           eof :eof
-          (do (.append sb (char ch))
-              (recur (.read reader))))))))
+          (do (#?(:clj .append :cljr .Append) sb (char ch))
+              (recur (#?(:clj .read :cljr .Read) reader))))))))
 
 (defn- read-record [reader sep quote]
   (loop [record (transient [])]
@@ -69,13 +71,13 @@
 (extend-protocol Read-CSV-From
   String
   (read-csv-from [s sep quote]
-    (read-csv-from (PushbackReader. (StringReader. s)) sep quote))
+    (read-csv-from (#?(:clj PushbackReader. :cljr PushbackTextReader.) (StringReader. s)) sep quote))
   
-  Reader
+  #?(:clj Reader :cljr TextReader)
   (read-csv-from [reader sep quote]
-    (read-csv-from (PushbackReader. reader) sep quote))
+    (read-csv-from (#?(:clj PushbackReader. :cljr PushbackTextReader.) reader) sep quote))
   
-  PushbackReader
+  #?(:clj PushbackReader :cljr PushbackTextReader)
   (read-csv-from [reader sep quote] 
     (lazy-seq
      (let [[record sentinel] (read-record reader sep quote)]
@@ -98,30 +100,30 @@
 
 ;; Writing
 
-(defn- write-cell [^Writer writer obj sep quote quote?]
+(defn- write-cell [^#?(:clj Writer :cljr TextWriter) writer obj sep quote quote?]
   (let [string (str obj)
 	must-quote (quote? string)]
-    (when must-quote (.write writer (int quote)))
-    (.write writer (if must-quote
+    (when must-quote (#?(:clj .write :cljr .Write) writer (int quote)))
+    (#?(:clj .write :cljr .Write)  writer (if must-quote
 		     (str/escape string
 				 {quote (str quote quote)})
 		     string))
-    (when must-quote (.write writer (int quote)))))
+    (when must-quote (#?(:clj .write :cljr .Write)  writer (int quote)))))
 
-(defn- write-record [^Writer writer record sep quote quote?]
+(defn- write-record [^#?(:clj Writer :cljr TextWriter) writer record sep quote quote?]
   (loop [record record]
     (when-first [cell record]
       (write-cell writer cell sep quote quote?)
       (when-let [more (next record)]
-	(.write writer (int sep))
+	(#?(:clj .write :cljr .Write)  writer #?(:clj (int sep) :cljr sep))
 	(recur more)))))
 
 (defn- write-csv*
-  [^Writer writer records sep quote quote? ^String newline]
+  [^#?(:clj Writer :cljr TextWriter) writer records sep quote quote? ^String newline]
   (loop [records records]
     (when-first [record records]
       (write-record writer record sep quote quote?)
-      (.write writer newline)
+      (#?(:clj .write :cljr .Write) writer newline)
       (recur (next records)))))
 
 (defn write-csv

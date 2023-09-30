@@ -3,7 +3,8 @@
    [clojure.test :only (deftest is)]
    [clojure.data.csv :only (read-csv write-csv)])
   (:import
-   [java.io Reader StringReader StringWriter EOFException]))
+   #?(:clj [java.io Reader StringReader StringWriter EOFException]
+      :cljr [System.IO TextReader StringReader StringWriter IOException])))
 
 (def ^{:private true} simple
   "Year,Make,Model
@@ -56,9 +57,9 @@ air, moon roof, loaded\",4799.00")
       (doall (read-csv s))
       (is false "No exception thrown")
       (catch Exception e
-        (is (or (instance? java.io.EOFException e)
-                (and (instance? RuntimeException e)
-                     (instance? java.io.EOFException (.getCause e)))))))))
+        (is (or (instance? #?(:clj java.io.EOFException :cljr IOException) e)
+                #?(:clj (and (instance? RuntimeException e)
+                     (instance? java.io.EOFException (.getCause e))))))))))
 
 (deftest parse-line-endings
   (let [csv (read-csv "Year,Make,Model\n1997,Ford,E350")]
